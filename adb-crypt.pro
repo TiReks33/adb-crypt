@@ -9,6 +9,9 @@ CONFIG += c++11
 
 # You can make your code fail to compile if it uses deprecated APIs.
 # In order to do so, uncomment the following line.
+
+INCLUDEPATH += "/home/alexander/qtcreator_proj/interfaces"
+
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
@@ -17,6 +20,7 @@ SOURCES += \
     textstreamwlinecount.cpp
 
 HEADERS += \
+    ../interfaces/iqtplugins.h \
     adb-crypt_global.h \
     adbcrypt.h \
     onetimestring.h \

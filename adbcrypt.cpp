@@ -5,39 +5,69 @@
 #define __SU "::[SUCCESS]::"
 #define __FA "::[FAIL]::"
 #define __WA "::[WARNING]::"
-//#define __ER "::[ERROR]::"
+#define __ER "::[ERROR]::"
 
-OneTimeString<QString> AdbCryptUtility::__passPhrase {
-    #include "test.dat"
-};
 
 QString const AdbCryptUtility::__standardPath = QDir::homePath()+"/.adbCrypt";
 
 
-
-AdbCrypt::AdbCrypt(QLineEdit * const &loginFormObjRef__, QLineEdit * const &passwFormObjRef__, const QString &directoryPath__, int credLim__)
+AdbCrypt::AdbCrypt
+(
+    QLineEdit * const &loginFormObjRef__,
+    QLineEdit * const &passwFormObjRef__,
+    const QString &directoryPath__,
+    int const credLim__,
+    QLineEdit * const &hostFormObjRef__,
+    int const hostEntriesLim__
+)
     : loginForm_{loginFormObjRef__}
     , passwForm_{passwFormObjRef__}
+    //
+    , hostForm_{hostFormObjRef__}
+    //
+    , passPhrase_{
+          #include "test.dat"
+          }
 
-    , crypto_binf_(AdbCryptUtility::__passPhrase.getStr().toUInt())
+    , crypto_binf_(passPhrase_.getStr().toUInt())
 
-    , dirPath_{directoryPath__}
-    , cryptoFileFullPath_{dirPath_+"/.cr.bin"}
-    , dataFileFullPath_{dirPath_+"/.usdata.bin"}
+//    , dirPath_{directoryPath__}
+//    , cryptoFileFullPath_{dirPath_+"/.cr.bin"}
+//    , dataFileFullPath_{dirPath_+"/.usdata.bin"}
 
     , completer{new QCompleter{}}
 
     , credLim_{credLim__}
+
+    //
+//    , conHostsFileFullPath_{dirPath_+"/.ushosts.bin"}
+    , conHostEntrLim_{hostEntriesLim__}
+    //
 {
+    if(!loginForm_ || !passwForm_)
+    {
+        auto __ERR_STR = __ER"ADBCRYPT MODULE'S 'LOGIN' AND 'PASSWD' FORMS OBJECTS ARGUMENTS MUST BE PROPERLY INITIALIZED (MUSTN'T BE NULL). ABORTING.";
+        qDebug() << __ERR_STR;
+        std::cout << __ERR_STR << std::endl;
+        std::abort();
+    }
 
-    initObj();
+    if(!(directoryPath__.isNull() || directoryPath__.isEmpty()))
+        dirPath_ = directoryPath__;
+    else
+        dirPath_ = AdbCryptUtility::__standardPath;
 
-//    std::cout << "address of completer from crypt module" << completer << std::endl;
-//    completer->setMaxVisibleItems(4);
+    cryptoFileFullPath_ = dirPath_+"/.cr.bin";
+    dataFileFullPath_ = dirPath_+"/.usdata.bin";
+    conHostsFileFullPath_ = dirPath_+"/.ushosts.bin";
+
+    setupObj();
+
+
 }
 
 
-void AdbCrypt::initObj()
+void AdbCrypt::setupObj()
 {
     QDir dir(dirPath_);
 
@@ -65,17 +95,7 @@ void AdbCrypt::initObj()
             }
         }
 
-//        if(!QFile(dataFileFullPath_).exists()){
 
-//            AdbCryptUtility::createFile(dataFileFullPath_,"data file");
-
-//        } else{
-
-//            if(decryptCredentials4romFile(__settingsMap)){
-
-//                wordList << __settingsMap.keys();
-//            }
-//        }
         if(QFile(dataFileFullPath_).exists()){
 
             if(decryptCredentials4romFile(__settingsMap)){
@@ -87,17 +107,21 @@ void AdbCrypt::initObj()
     }while(false);
 
 
-    completer->setModel(&completerModel);
 
-    completerModel.setStringList(wordList);
-
-    loginForm_->setCompleter(completer);
+    setLoginCompleter();
 
 
     QObject::connect(completer,static_cast<void (QCompleter::*)(QString const&)> (&QCompleter::activated),[=](QString const& selectedStr__){
 
         completerActivated(selectedStr__);
     });
+
+    if(QFile(conHostsFileFullPath_).exists()){
+
+        decrSavedConHosts();
+    }
+
+    setHostCompleter();
 
 }
 
@@ -148,16 +172,6 @@ void AdbCrypt::generateNewKey2bin()
         myBinaryFile.flush();
         myBinaryFile.close();
 
-        QFile f2(cryptoFileFullPath_);
-        f2.open(QIODevice::ReadWrite);
-
-        QDataStream stream2(&f2);
-
-
-
-        /*quint64*/QByteArray testRes;
-        stream2 >> testRes;
-
 
     } else{
 
@@ -183,27 +197,22 @@ bool AdbCrypt::getKey4romBin()
     return __checkNumb;
 }
 
-
-AdbCrypt* AdbCrypt::data(QLineEdit * const &loginFormObjRef__,
-                         QLineEdit * const &passwFormObjRef__,
-                         const QString &directoryPath__,
-                         int credLim__)
+ICryptoPlugin* CCreateCryptoModuleObj(QLineEdit * const &loginFormObjRef__,
+                             QLineEdit * const &passwFormObjRef__,
+                             QLineEdit * const & hostFormObjRef__,
+                             const QString &directoryPath__,
+                             int const credLim__,
+                             int const hostEntrLim__)
 {
-    static bool singlInstFlag = false;
-    static AdbCrypt* __singlInstObjPtr = new AdbCrypt(loginFormObjRef__,passwFormObjRef__,directoryPath__,credLim__);
 
-    if(singlInstFlag){
-
-        qDebug() << __WA"Crypto Module object already initialized. New parameters will be ignored.";
-
-    }else {
-
-        singlInstFlag=true;
-    }
-
-    return __singlInstObjPtr;
+    return AdbCrypt::getInst(loginFormObjRef__,passwFormObjRef__, hostFormObjRef__, directoryPath__,credLim__,hostEntrLim__);
 }
 
+
+ICryptoPlugin* AdbCrypt::getInst(QLineEdit * const &loginFormObjRef__, QLineEdit * const &passwFormObjRef__, QLineEdit * const & hostFormObjRef__, const QString &directoryPath__, int const credLim__, int const hostEntrLim__)
+{
+    return new (std::nothrow) AdbCrypt(loginFormObjRef__,passwFormObjRef__,directoryPath__,credLim__,hostFormObjRef__,hostEntrLim__);
+}
 
 bool AdbCrypt::decryptCredentials4romFile(QMap<QString, QString> &settingsMap__)
 {
@@ -316,8 +325,7 @@ bool AdbCrypt::encryptCredentials2File()
 
         wordList << login;
 
-
-        /*AdbCryptUtility::*/cutLines2lim(decryptedFormattedString,credLim_);
+        /*AdbCryptUtility::*/cutCredentialsEntries2linesLim(decryptedFormattedString,credLim_-1);
 
     }
 
@@ -370,11 +378,8 @@ bool AdbCrypt::encryptCredentials2File()
 
     buffer.close();
 
-    completer->setModel(&completerModel);
 
-    completerModel.setStringList(wordList);
-
-    loginForm_->setCompleter(completer);
+    setLoginCompleter();
 
     return true;
 }
@@ -386,7 +391,6 @@ void AdbCrypt::completerActivated(const QString &curText__)
 
     if(decryptCredentials4romFile(__settingsMap)){
 
-
         passwForm_->setText(crypto_passw_.decryptToString(__settingsMap[curText__]));
 
     }
@@ -394,7 +398,7 @@ void AdbCrypt::completerActivated(const QString &curText__)
 }
 
 
-/*bool*/void AdbCrypt::reCreate()//clearSavedUserData()
+/*bool*/void AdbCrypt::reGenKey()//clearSavedUserData()
 {
 
     AdbCryptUtility::deleteFile(dataFileFullPath_,"encrypted data file");
@@ -406,12 +410,14 @@ void AdbCrypt::completerActivated(const QString &curText__)
     generateNewKey2bin();
     getKey4romBin();
 
-    completer->setModel(&completerModel);
 
-    completerModel.setStringList(wordList);
+    setLoginCompleter();
 
-    loginForm_ ->setCompleter(completer);
-
+    //
+    AdbCryptUtility::deleteFile(conHostsFileFullPath_, "saved hosts file");
+    conHostsList_.clear();
+    setHostCompleter();
+    //
 
     return;
 }
@@ -423,6 +429,233 @@ void AdbCrypt::getSavedLogins()
       loginForm_->completer()->setCompletionPrefix("");
       loginForm_->completer()->complete();
     }
+}
+
+QString AdbCrypt::decryptSomeBinF(const QString &fNameWpath__)
+{
+    QDataStream IODataStream={};
+
+    // open file with user credentials
+    QFile file(fNameWpath__);
+
+    if(!file.open(QIODevice::ReadOnly)){
+
+        qDebug() << __FA"Decrypt::Unable to open data file for decrypt.";
+        return "";
+    }
+
+    // read encrypted data from file and copy to raw bytes structure
+    IODataStream.setDevice(&file);
+    QByteArray cypherText="";
+    IODataStream >> cypherText;
+
+    file.close();
+
+
+    // 'unzip' credentials (with encrtypted pass)
+    QByteArray decryptedFileRawBytes = crypto_binf_.decryptToByteArray(cypherText);
+
+
+    if ((crypto_binf_.lastError() != SimpleCrypt::ErrorNoError)) {
+        qDebug() << __FA"Decrypt::Error while decoding binary file. Reason::"<< crypto_binf_.lastError();
+        return "";
+    }
+
+    // open
+    QBuffer buffer(&decryptedFileRawBytes);
+    buffer.open(QIODevice::ReadOnly);
+    IODataStream.setDevice(&buffer);
+    IODataStream.setVersion(QDataStream::Qt_4_7);
+
+    QString decryptedFormattedString;
+    IODataStream >> decryptedFormattedString; //stream in a string
+
+    buffer.close();
+
+    return decryptedFormattedString;
+}
+
+void AdbCrypt::encryptSomeInfoToSomeBinF(const QString &info__, const QString &fNameWpath__, int linesLim__, bool removeDuplicates__)
+{
+    QByteArray decryptedFileRawBytes{""};
+    QBuffer buffer{};
+    //QDataStream decryptedFileDataStream{};
+    QString decryptedFormattedString{""};
+    QDataStream IODataStream={};
+
+    QFile file(fNameWpath__);
+
+    if(file.exists()){
+
+        if(file.open(QIODevice::ReadOnly)){
+
+            IODataStream.setDevice(&file);    // read the data serialized from the file
+
+            QByteArray cyphertext;
+            IODataStream >> cyphertext;           // extract "the answer is" and 42
+
+            file.close();
+
+            decryptedFileRawBytes = crypto_binf_.decryptToByteArray(cyphertext);
+
+            if ((crypto_binf_.lastError() != SimpleCrypt::ErrorNoError)) {
+
+                qDebug() << __FA"Encrypt::Error while decoding binary file. Reason::"<< crypto_binf_.lastError();
+
+            } else{
+
+                buffer.setData(decryptedFileRawBytes);
+
+                if(buffer.open(QIODevice::ReadOnly)){
+
+                    IODataStream.setDevice(&buffer);
+                    IODataStream.setVersion(QDataStream::Qt_4_7);
+
+                    IODataStream >> decryptedFormattedString; //stream in a string
+
+                    buffer.close();
+
+
+                }
+
+            }
+
+        }
+
+    }
+
+
+    if(!(removeDuplicates__ && AdbCryptUtility::removeDuplicateLine4romStr(decryptedFormattedString,info__))){
+
+        AdbCryptUtility::cutStr2linesLim(decryptedFormattedString,linesLim__-1);
+    }
+
+
+    QTextStream decryptedFormattedStringIOStream(&decryptedFormattedString);
+
+
+    decryptedFormattedStringIOStream << info__  << Qt::endl;
+
+
+
+    crypto_binf_.setCompressionMode(SimpleCrypt::CompressionAlways); //always compress the data, see section below
+    crypto_binf_. setIntegrityProtectionMode(SimpleCrypt::ProtectionHash);
+
+
+    buffer.open(QIODevice::WriteOnly);
+
+    QDataStream bufferDataIOStream(&buffer);
+
+    bufferDataIOStream.setVersion(QDataStream::Qt_4_7);
+
+    bufferDataIOStream << decryptedFormattedString;
+
+
+    QByteArray myCypherText = crypto_binf_.encryptToByteArray(buffer.data());
+
+
+    if ((crypto_binf_.lastError() != SimpleCrypt::ErrorNoError)) {
+
+        qDebug() << __FA"Encrypt::Error while encoding 2 binary file. Reason::"<< crypto_binf_.lastError();
+
+    } else {
+
+
+        file.open(QIODevice::WriteOnly);
+        /*QDataStream out*/IODataStream.setDevice(&file);
+
+        IODataStream << myCypherText;
+
+
+        file.close();
+
+    }
+
+    buffer.close();
+
+}
+
+void AdbCrypt::encryptCurHost()
+{
+    if(hostForm_){
+
+        QString __text2Encrypt;
+
+        QString const curHostEntry = hostForm_->text();
+
+        if(!curHostEntry.isEmpty()){
+
+            __text2Encrypt = curHostEntry;
+
+        } else{
+
+            __text2Encrypt = "localhost";
+        }
+
+
+        encryptSomeInfoToSomeBinF(__text2Encrypt,conHostsFileFullPath_,conHostEntrLim_, true);
+
+    }
+}
+
+void AdbCrypt::decrSavedConHosts()
+{
+    if(hostForm_){
+
+        auto decrStr = decryptSomeBinF(conHostsFileFullPath_);
+
+        conHostsList_.clear();
+
+        conHostsList_ = decrStr.split("\n");
+
+        if(!conHostsList_.isEmpty())
+            conHostsList_.removeLast();
+
+        std::reverse(conHostsList_.begin(), conHostsList_.end());
+
+        setHostCompleter();
+    }
+}
+
+void AdbCrypt::getSavedHosts()
+{
+    if(hostForm_){
+
+        if(hostForm_->text().isEmpty()){
+            hostForm_->completer()->setCompletionPrefix("");
+            hostForm_->completer()->complete();
+        }
+    }
+}
+
+AdbCrypt::~AdbCrypt()
+{
+
+}
+
+QString AdbCrypt::pluginName()
+{
+    return "AdbCrypt";
+}
+
+void AdbCrypt::setHostCompleter()
+{
+    if(hostForm_){
+        conHostsCompleter_.setModel(&conHostsListModel_);
+
+        conHostsListModel_.setStringList(conHostsList_);
+
+        hostForm_->setCompleter(&conHostsCompleter_);
+    }
+}
+
+void AdbCrypt::setLoginCompleter()
+{
+    completer->setModel(&completerModel);
+
+    completerModel.setStringList(wordList);
+
+    loginForm_->setCompleter(completer);
 }
 
 
@@ -479,13 +712,19 @@ int AdbCryptUtility::createFile(const QString &fullFilePath__, const QString &fi
     return __status;
 }
 
-void /*AdbCryptUtility::*/AdbCrypt::cutLines2lim(QString &str2cut__, int linesLim__)
+void /*AdbCryptUtility::*/AdbCrypt::cutCredentialsEntries2linesLim(QString &str2cut__, int linesLim__)
 {
 
     do{
         QStringList list = str2cut__.split('\n');
-        int listSize = list.size();
+        int listSize = list.size()-1;
 
+        if(linesLim__<0){
+            auto warningMessage = __WA"Can't cut data with lines limit less then 0.";
+            qDebug() << warningMessage;
+            std::cout << warningMessage << std::endl;
+            break;
+        }
 
         if(listSize>linesLim__){
 
@@ -515,6 +754,7 @@ void /*AdbCryptUtility::*/AdbCrypt::cutLines2lim(QString &str2cut__, int linesLi
             str2cut__ = tmpStr;
 
         } else{
+
             break;
         }
 
@@ -704,6 +944,80 @@ QString AdbCrypt::getLineEntrie(QString *decryptedFileContent__, const QString &
     }
 
     return "";
+}
+
+
+void AdbCryptUtility::cutStr2linesLim(QString &str2cut__, int linesLim__)
+{
+
+    do{
+
+        if(linesLim__<0){
+            auto warningMessage = __WA"Can't cut data with lines limit less then 0.";
+            qDebug() << warningMessage;
+            std::cout << warningMessage << std::endl;
+            break;
+        }
+
+        QStringList list = str2cut__.split('\n');
+        int listSize = list.size()-1;
+
+
+        if(listSize>linesLim__){
+
+
+            if(!list.isEmpty()){
+
+                list.removeFirst();
+
+                auto tmpStr = list.join("\n");
+
+                str2cut__ = tmpStr;
+
+            } else{
+
+                break;
+            }
+
+        } else{
+
+            break;
+        }
+
+    }while(true);
+}
+
+
+bool AdbCryptUtility::removeDuplicateLine4romStr(QString &strRef__, const QString &line2remove__)
+{
+    do{
+
+        if(!line2remove__.isEmpty()){
+
+            int indOfEntrieLine = strRef__.indexOf(line2remove__);
+            if(indOfEntrieLine == -1)
+                break;
+
+            // remove line completely
+            int indOfEndl = strRef__.indexOf('\n',indOfEntrieLine)/*+1*/;
+
+            if(indOfEndl == -1)
+                break;
+            else
+                indOfEndl++;
+
+            strRef__.remove(indOfEntrieLine,indOfEndl-indOfEntrieLine);
+
+            return true;
+
+        }
+
+        qDebug() << __WA"removeDuplicateLine4romStr::line2remove is empty.";
+
+    }while(false);
+
+    return false;
+
 }
 
 

@@ -15,10 +15,12 @@
 #include <QBuffer>
 #include <QCompleter>
 #include <QStringLiteral>
+#include <QPointer>
 
 #include <QRandomGenerator>
 #include <QRandomGenerator64>
 
+#include "iqtplugins.h"
 
 enum fileCreateStatus{
     Failed,
@@ -28,63 +30,105 @@ enum fileCreateStatus{
 
 namespace AdbCryptUtility {
 
-    extern OneTimeString<QString> __passPhrase;
-
     extern QString const __standardPath;
 
     int createFile(QString const& fullFilePath, QString const& fileLogDescr = "file");
 
     bool deleteFile(QString const& fullFilePath, QString const& fileLogDescr = "file");
 
+    void cutStr2linesLim(QString & strRef,int linesLimit);
+
+    bool removeDuplicateLine4romStr(QString & strRef, QString const & line2remove);
 }
 
 
-
-class ADBCRYPT_EXPORT AdbCrypt
+class /*ADBCRYPT_EXPORT*/ AdbCrypt : public ICryptoPlugin
 {
 
 private:
-    QLineEdit * const & loginForm_ = nullptr;
-    QLineEdit * const & passwForm_ = nullptr;
+    QLineEdit * const /*&*/ loginForm_ = nullptr;
+    QLineEdit * const /*&*/ passwForm_ = nullptr;
+    //
+    QLineEdit * const /*&*/ hostForm_ = nullptr;
+    //
+
+    OneTimeString<QString> passPhrase_;
 
     SimpleCrypt crypto_binf_;
     SimpleCrypt crypto_passw_;
 
-    QString const dirPath_;
-    QString const cryptoFileFullPath_;
-    QString const dataFileFullPath_;
+    QString dirPath_;
+    QString cryptoFileFullPath_;
+    QString dataFileFullPath_;
 
     QStringListModel completerModel;
     QStringList wordList;
     QCompleter *completer = nullptr;
 
-    int credLim_ = 0;
+    int const credLim_ = 0;
+
+    // 'Host' form members
+    QString conHostsFileFullPath_ ;
+    int const conHostEntrLim_ = 0;
+    QStringList conHostsList_;
+    QStringListModel conHostsListModel_;
+    QCompleter conHostsCompleter_;
+    //
 
 public:    
 
-
-    static AdbCrypt* data
+    static ICryptoPlugin* getInst
     (
           QLineEdit * const & loginFormObjRef
         , QLineEdit * const & passwFormObjRef
-        , QString const & directoryPath = AdbCryptUtility::__standardPath
-        , int credentialsLimit = 25
+        //
+        , QLineEdit * const & hostFormObjRef/* = nullptr*/
+        //
+        , QString const & directoryPath/* = AdbCryptUtility::__standardPath*/
+        , int const credentialsLimit/* = 25*/
+        //
+        , int const hostEntriesLimit/* = 5*/
+        //
     );
 
+//    static ICryptoPlugin* getInst(std::nullptr_t, std::nullptr_t,QLineEdit* const &, QString const &, int const, int const) = delete;
+//    static ICryptoPlugin* getInst(std::nullptr_t, QLineEdit * const &,QLineEdit* const &, QString const &, int const, int const) = delete;
+//    static ICryptoPlugin* getInst(QLineEdit * const &, std::nullptr_t,QLineEdit* const &, QString const &, int const, int const) = delete;
 
-    bool decryptCredentials4romFile(QMap<QString, QString> &settingsMap);
 
-    bool encryptCredentials2File();
+    virtual bool encryptCredentials2File() override;
 
-    void completerActivated(const QString& curText);
+    virtual void /*reCreate*/reGenKey() override;
 
-    void reCreate();//void clearSavedUserData();
+    void getSavedLogins() override;
 
-    void getSavedLogins();
+    virtual QString decryptSomeBinF(QString const& fNameWpath) override;
+    virtual void encryptSomeInfoToSomeBinF(QString const& info,QString const& fNameWpath,int linesLim, bool removeDuplicates = false) override;
+
+    virtual void encryptCurHost() override;
+
+
+    virtual void getSavedHosts() override;
+
+    virtual ~AdbCrypt();
+
+    virtual QString pluginName() override;
+
 
 private:
 
-    void initObj();
+    void setHostCompleter();
+
+    void setLoginCompleter();
+
+    void decrSavedConHosts();
+
+    bool decryptCredentials4romFile(QMap<QString, QString> &settingsMap);
+
+    void completerActivated(const QString& curText);
+
+
+    void setupObj();
 
     void generateNewKey2bin();
 
@@ -100,7 +144,7 @@ private:
 
     QString getLineEntrie(QString *decryptedFormattedFileContentFrom,QString const& login);
 
-    void cutLines2lim(QString & str2cut,int linesLimit);
+    void cutCredentialsEntries2linesLim(QString & decryptedCredFileContent2cut,int linesLimit);
 
     explicit AdbCrypt
     (
@@ -108,6 +152,10 @@ private:
         , QLineEdit * const & passwFormObjRef
         , QString const & directoryPath /*= AdbCryptUtility::__standardPath*/
         , int credentialsLimit
+        //
+        , QLineEdit * const & hostFormObjRef
+        , int const hostEntriesLimit
+        //
     );
 
     AdbCrypt() = delete;
